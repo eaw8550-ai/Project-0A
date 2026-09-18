@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cube Planet Walker — Multiplayer</title>
+<style>
+:root { color-scheme: dark; font: 16px/1.4 system-ui, sans-serif; }
+* { box-sizing: border-box; }
+html, body { width: 100%; height: 100%; margin: 0; }
+body { overflow: hidden; background: radial-gradient(circle at 50% 34%, #263b58 0%, #101b2d 46%, #050914 100%); }
+canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
+canvas:active { cursor: grabbing; }
+.hud { position: fixed; inset: 1.25rem 1.25rem auto; display: flex; justify-content: space-between; gap: 1rem; pointer-events: none; }
+.panel { padding: .7rem .9rem; border: 1px solid #ffffffaa; border-radius: .6rem; background: #132335cc; box-shadow: 0 .5rem 2rem #40566a44; }
+.filters { position: fixed; top: 1.25rem; left: 50%; transform: translateX(-50%); display: flex; gap: .45rem; padding: .45rem .6rem; pointer-events: auto; }
+.filters label { color: #dbe8f5; font-size: .78rem; cursor: pointer; user-select: none; }
+.filters input { accent-color: #72d5ff; }
+.title { color: #f5f7ff; font-weight: 700; letter-spacing: .04em; }
+.controls { color: #dbe8f5; font-size: .85rem; text-align: right; }
+.status { position: fixed; bottom: 1.25rem; left: 50%; transform: translateX(-50%); color: #c8d8ec; opacity: .85; text-align: center; white-space: nowrap; }
+kbd { padding: .1rem .35rem; border: 1px solid #ffffff38; border-radius: .25rem; background: #ffffff12; color: #fff; }
+
+/* ── Multiplayer login overlay Layout Fixes ─────────────────── */
+#login-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+  display: flex; align-items: stretch; z-index: 1000;
+  opacity: 1; transition: opacity 0.5s ease;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+}
+#login-overlay.dissolve { opacity: 0; pointer-events: none; }
+.ll { 
+  width: 420px; 
+  max-width: 100vw; 
+  flex-shrink: 0; 
+  padding: 40px 20px 40px 60px; 
+  display: flex; 
+  flex-direction: column; 
+  justify-content: center; 
+  height: 100%; 
+  overflow-y: auto; 
+}
+.li { display: flex; flex-direction: column; gap: 20px; width: 100%; }
+.ls { font-size: 16px; color: #fff; font-weight: 400; white-space: nowrap; margin: 0; }
+.lh { font-size: 44px; line-height: 1.1; color: #ececec; font-weight: 400; white-space: nowrap; margin: 4px 0 0 0; }
+.lh b { font-weight: 700; }
+.lg { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.ll-label { font-size: 15px; color: #7f7c76; font-weight: 400; margin: 0; }
+.ll-input {
+  background: transparent; border: none;
+  border-bottom: 1px solid rgba(255,255,255,0.3);
+  color: #fff; font-size: 16px; font-family: inherit;
+  padding: 0 0 6px 0; width: 100%; outline: none; transition: border-color 0.2s;
+}
+.ll-input::placeholder { color: rgba(255,255,255,0.2); }
+.ll-input:focus { border-bottom-color: rgba(255,255,255,0.7); }
+.swatches { display: grid; grid-template-columns: repeat(4, 32px); gap: 10px; }
+.swatch {
+  width: 32px; height: 32px; border-radius: 50%;
+  cursor: pointer; border: none; padding: 0;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.swatch:hover { transform: scale(1.12); }
+.swatch.sel { box-shadow: 0 0 0 2px rgba(0,0,0,0.85), 0 0 0 4px var(--c); }
+.join-btn {
+  background: #fb5579; border: none; border-radius: 3px;
+  color: #fff; font-size: 22px; font-family: inherit;
+  font-weight: 700; padding: 12px 20px; margin-top: 10px;
+  cursor: pointer; transition: background 0.15s; line-height: 1;
+}
+.join-btn:hover { background: #e63e60; }
+.l-err { font-size: 12px; color: #fb5579; min-height: 16px; margin-top: -10px; }
+.lr {
+  position: fixed; right: 0; top: 0; bottom: 0; width: 54px;
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: flex-start; gap: 60px; padding-top: 70px;
+  pointer-events: none;
+}
+.lr-text { writing-mode: vertical-lr; font-size: 13px; color: rgba(255,255,255,0.4); white-space: nowrap; }
+.lr-text b { font-weight: 700; color: rgba(255,255,255,0.55); }
+.lr-tag { writing-mode: vertical-lr; background: #fb5579; color: #fff; font-size: 13px; font-weight: 700; white-space: nowrap; padding: 10px 16px; }
+.name-flag { position: fixed; pointer-events: none; white-space: nowrap; z-index: 500; transform: translate(-50%, -100%); }
+.name-flag .label { background: #fb5579; color: #fff; font-size: 11px; font-weight: 600; letter-spacing: 0.5px; padding: 3px 8px; border-radius: 2px; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
+#notif { position: fixed; top: 40px; left: 50%; transform: translateX(-50%); font-size: 11px; letter-spacing: 2px; text-transform: uppercase; color: rgba(255,255,255,0.85); background: rgba(0,0,0,0.55); padding: 5px 14px; border-radius: 3px; opacity: 0; transition: opacity 0.3s; pointer-events: none; white-space: nowrap; z-index: 600; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; }
+#notif.show { opacity: 1; }
+</style>
+</head>
+<body>
+<canvas id="scene" aria-label="A small cube walking around the surface of a planet, leaving a colored trail"></canvas>
+<div class="hud"><div class="panel controls"><kbd>WASD</kbd> / <kbd>&larr;&uarr;&darr;&rarr;</kbd> walk &middot; <kbd>Space</kbd>+keys orbit<br><kbd>Shift</kbd> flare &middot; <kbd>C</kbd> clear trail &middot; <kbd>1</kbd>-<kbd>5</kbd> trail height</div></div>
+<div class="panel filters" aria-label="Visual filters">
+	<label><input type="checkbox" data-filter="ascii"> ASCII</label>
+	<label><input type="checkbox" data-filter="threshold"> Threshold</label>
+	<label><input type="checkbox" data-filter="posterize"> Posterize</label>
+	<label><input type="checkbox" data-filter="glow"> Glow</label>
+	<label><input type="checkbox" data-filter="tone"> Tone</label>
+</div>
+<div class="status" id="status">Walk across the planet to paint a directional trail</div>
+
+<div id="notif"></div>
+
+<div id="login-overlay">
+  <div class="ll">
+    <div class="li">
+      <div>
+        <p class="ls">Cube Planet Walker</p>
+        <p class="lh">Project <b>01</b></p>
+      </div>
+      <div class="lg">
+        <p class="ll-label">Name</p>
+        <input class="ll-input" id="l-name" type="text" placeholder="First Name"
+          maxlength="20" onkeydown="if(event.key==='Enter')doJoin()">
+      </div>
+      <div class="lg">
+        <p class="ll-label">Color</p>
+        <div class="swatches" id="l-swatches"></div>
+      </div>
+      <div class="lg">
+        <p class="ll-label">Server</p>
+        <input class="ll-input" id="l-server" type="text"
+          value="wss://your-ngrok-url-here"
+          placeholder="wss://your-ngrok-url"
+          onkeydown="if(event.key==='Enter')doJoin()">
+      </div>
+      <div class="l-err" id="l-err"></div>
+      <button class="join-btn" onclick="doJoin()">Join</button>
+    </div>
+  </div>
+  <div class="lr">
+    <span class="lr-text"><b>Mike Minerva</b> &nbsp; Professor of Practice, New Media Design</span>
+    <span class="lr-tag">NMDE 404 Interactive 4</span>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ══════════════════════════════════════════════════════════════════════
+// Scene setup
+// ══════════════════════════════════════════════════════════════════════
+const canvas = document.querySelector('#scene');
+const status = document.querySelector('#status');
+const filterState = { ascii: false, threshold: false, posterize: false, glow: false, tone: false };
+document.querySelectorAll('[data-filter]').forEach(input => input.addEventListener('change', () => { filterState[input.dataset.filter] = input.checked; }));
+
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 100);
+
+scene.add(new THREE.AmbientLight(0x223344, 0.6));
+const keyLight = new THREE.DirectionalLight(0xffffff, 1.1); keyLight.position.set(-1.5, 2.4, 2.6); scene.add(keyLight);
+const fillLight = new THREE.DirectionalLight(0x88aaff, 0.5); fillLight.position.set(2.2, 0.4, 2.6); scene.add(fillLight);
+const rimLight = new THREE.DirectionalLight(0xffffff, 0.6); rimLight.position.set(0.3, -1.8, -2.6); scene.add(rimLight);
+
+const RADIUS = 2;
+const UP = new THREE.Vector3(0, 1, 0);
+const trailHeights = [0.08, 0.16, 0.26, 0.4, 0.58];
+
+// Planet
+const planetGeometry = new THREE.IcosahedronGeometry(RADIUS, 1);
+const planetMaterial = new THREE.MeshStandardMaterial({ color: 0x1c4674, roughness: 0.6, metalness: 0.1, flatShading: true });
+scene.add(new THREE.Mesh(planetGeometry, planetMaterial));
+
+// Continents — flavor patches wrapped around the planet
+const CONTINENT_DIRS = [
+	[0.4, 0.7, 0.55], [-0.6, 0.4, 0.6], [0.7, -0.3, 0.5], [-0.3, -0.7, 0.4],
+	[0.6, 0.55, -0.5], [-0.7, 0.2, -0.5], [0.2, -0.8, -0.4], [-0.4, -0.4, -0.7],
+	[0.85, 0.1, -0.1], [-0.85, -0.15, 0.2], [0.1, 0.9, -0.2], [-0.15, -0.9, 0.25]
+];
+const CONTINENT_COLORS = [0x2c8f4f, 0xc9a94a, 0x2c8f4f, 0xc9a94a];
+CONTINENT_DIRS.forEach((dir, i) => {
+	const normal = new THREE.Vector3(dir[0], dir[1], dir[2]).normalize();
+	const patch = new THREE.Mesh(
+		new THREE.CircleGeometry(0.35 + (i % 3) * 0.09, 10),
+		new THREE.MeshStandardMaterial({ color: CONTINENT_COLORS[i % CONTINENT_COLORS.length], roughness: 0.85, flatShading: true })
+	);
+	patch.position.copy(normal).multiplyScalar(RADIUS * 1.006);
+	patch.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
+	scene.add(patch);
+});
+
+// Player
+const player = { surface: new THREE.Vector3(0, 0, 1), height: trailHeights[1] };
+const playerMesh = new THREE.Mesh(
+	new THREE.BoxGeometry(0.24, 0.24, 0.24),
+	new THREE.MeshStandardMaterial({ color: 0x4A90D9, roughness: 0.4 })
+);
+scene.add(playerMesh);
+
+function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+function updatePlayerMesh() {
+	playerMesh.position.copy(player.surface).multiplyScalar(RADIUS + player.height);
+	playerMesh.quaternion.setFromUnitVectors(UP, player.surface);
+}
+updatePlayerMesh();
+
+function moveAcrossSurface(horizontal, vertical, distance) {
+	const normal = player.surface;
+	let tangentRight = new THREE.Vector3(0, 1, 0).cross(normal);
+	if (tangentRight.length() < 0.001) tangentRight = new THREE.Vector3(0, 0, 1).cross(normal);
+	tangentRight.normalize();
+	const tangentUp = normal.clone().cross(tangentRight).normalize();
+	const movement = tangentRight.multiplyScalar(horizontal * distance).add(tangentUp.multiplyScalar(vertical * distance));
+	player.surface.add(movement).normalize();
+}
+
+// ── Thick Ribbon Trail Setup (Infinite Capacity: 50,000 segments) ──
+const MAX_TRAIL_POINTS = 50000;
+const TRAIL_WIDTH = 0.08; // Thicker path width
+const trailPositions = new Float32Array(MAX_TRAIL_POINTS * 2 * 3); // 2 vertices per point
+const trailColors = new Float32Array(MAX_TRAIL_POINTS * 2 * 3);
+let trailPointCount = 0;
+
+const trailGeometry = new THREE.BufferGeometry();
+trailGeometry.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
+trailGeometry.setAttribute('color', new THREE.BufferAttribute(trailColors, 3));
+trailGeometry.setDrawRange(0, 0);
+
+const trailMesh = new THREE.Mesh(
+	trailGeometry,
+	new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide, transparent: true, opacity: 0.95 })
+);
+scene.add(trailMesh);
+
+const DIRECTION_COLORS = {
+	up: new THREE.Color(0x4dcdff), down: new THREE.Color(0xff5747),
+	left: new THREE.Color(0xf273f2), right: new THREE.Color(0xffcc38)
+};
+const BOOST_COLOR = new THREE.Color(0xffe27a);
+let boostUntil = 0;
+let lastSurfacePos = null;
+
+function pushTrailPoint(dir) {
+	if (trailPointCount >= MAX_TRAIL_POINTS) return; // Infinite capacity up to memory limit
+
+	const normal = player.surface.clone().normalize();
+	const centerPos = normal.clone().multiplyScalar(RADIUS + player.height + 0.005);
+
+	let tangent = new THREE.Vector3();
+	if (lastSurfacePos) {
+		tangent.subVectors(centerPos, lastSurfacePos).normalize();
+	}
+	if (tangent.lengthSq() < 0.0001) {
+		tangent.crossVectors(normal, UP);
+		if (tangent.lengthSq() < 0.0001) tangent.crossVectors(normal, new THREE.Vector3(1, 0, 0));
+	}
+	tangent.normalize();
+
+	const binormal = new THREE.Vector3().crossVectors(normal, tangent).normalize();
+	const leftPos = centerPos.clone().addScaledVector(binormal, -TRAIL_WIDTH / 2);
+	const rightPos = centerPos.clone().addScaledVector(binormal, TRAIL_WIDTH / 2);
+
+	const color = performance.now() < boostUntil ? BOOST_COLOR : (DIRECTION_COLORS[dir] || DIRECTION_COLORS.up);
+	const idx = trailPointCount * 6;
+
+	// Left vertex
+	trailPositions[idx] = leftPos.x; trailPositions[idx + 1] = leftPos.y; trailPositions[idx + 2] = leftPos.z;
+	trailColors[idx] = color.r; trailColors[idx + 1] = color.g; trailColors[idx + 2] = color.b;
+
+	// Right vertex
+	trailPositions[idx + 3] = rightPos.x; trailPositions[idx + 4] = rightPos.y; trailPositions[idx + 5] = rightPos.z;
+	trailColors[idx + 3] = color.r; trailColors[idx + 4] = color.g; trailColors[idx + 5] = color.b;
+
+	trailPointCount++;
+	trailGeometry.setDrawRange(0, trailPointCount * 2);
+	trailGeometry.attributes.position.needsUpdate = true;
+	trailGeometry.attributes.color.needsUpdate = true;
+
+	lastSurfacePos = centerPos;
+}
+
+function clearTrail() {
+	trailPointCount = 0;
+	lastSurfacePos = null;
+	trailGeometry.setDrawRange(0, 0);
+}
+
+// Shift effect — flare
+const flares = [];
+function spawnFlare() {
+	const mesh = new THREE.Mesh(
+		new THREE.SphereGeometry(0.12, 12, 12),
+		new THREE.MeshBasicMaterial({ color: 0xffe27a, wireframe: true, transparent: true, opacity: 1 })
+	);
+	mesh.position.copy(playerMesh.position);
+	scene.add(mesh);
+	flares.push({ mesh, start: performance.now() });
+	boostUntil = performance.now() + 400;
+}
+function updateFlares() {
+	const now = performance.now();
+	for (let i = flares.length - 1; i >= 0; i--) {
+		const f = flares[i];
+		const t = (now - f.start) / 500;
+		if (t >= 1) {
+			scene.remove(f.mesh); f.mesh.geometry.dispose(); f.mesh.material.dispose();
+			flares.splice(i, 1);
+			continue;
+		}
+		f.mesh.scale.setScalar(1 + t * 3.5);
+		f.mesh.material.opacity = 1 - t;
+	}
+}
+
+// Camera controls
+let camDistance = 6.4, camTheta = 0.6, camPhi = 1.1;
+function updateCamera() {
+	camera.position.set(
+		camDistance * Math.sin(camPhi) * Math.sin(camTheta),
+		camDistance * Math.cos(camPhi),
+		camDistance * Math.sin(camPhi) * Math.cos(camTheta)
+	);
+	camera.lookAt(0, 0, 0);
+}
+
+let isDragging = false, lastPX = 0, lastPY = 0;
+canvas.addEventListener('pointerdown', e => { isDragging = true; lastPX = e.clientX; lastPY = e.clientY; canvas.setPointerCapture(e.pointerId); });
+canvas.addEventListener('pointermove', e => {
+	if (!isDragging) return;
+	camTheta -= (e.clientX - lastPX) * 0.006;
+	camPhi = clamp(camPhi - (e.clientY - lastPY) * 0.006, 0.15, Math.PI - 0.15);
+	lastPX = e.clientX; lastPY = e.clientY;
+});
+function stopDrag(e) { isDragging = false; if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId); }
+canvas.addEventListener('pointerup', stopDrag);
+canvas.addEventListener('pointercancel', stopDrag);
+
+// ── Restored WASD + Arrow Key Bindings ──
+const pressedKeys = {};
+window.addEventListener('keydown', e => {
+	const k = e.key.toLowerCase();
+	if (['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'w', 'a', 's', 'd', ' '].includes(k)) {
+		if (document.activeElement.tagName !== 'INPUT') e.preventDefault();
+	}
+	pressedKeys[k] = true;
+	if (e.key === 'Shift') spawnFlare();
+	if (k === 'c' && document.activeElement.tagName !== 'INPUT') clearTrail();
+	if (e.key >= '1' && e.key <= '5') player.height = trailHeights[Number(e.key) - 1];
+});
+window.addEventListener('keyup', e => { delete pressedKeys[e.key.toLowerCase()]; });
+
+const MOVE_SPEED = 1.6, ORBIT_SPEED = 1.8;
+function handleInput(dt) {
+	if (document.activeElement.tagName === 'INPUT') return;
+
+	const spaceHeld = pressedKeys[' '] !== undefined;
+	const isLeft = pressedKeys['arrowleft'] || pressedKeys['a'];
+	const isRight = pressedKeys['arrowright'] || pressedKeys['d'];
+	const isUp = pressedKeys['arrowup'] || pressedKeys['w'];
+	const isDown = pressedKeys['arrowdown'] || pressedKeys['s'];
+
+	if (spaceHeld) {
+		if (isLeft) camTheta -= ORBIT_SPEED * dt;
+		if (isRight) camTheta += ORBIT_SPEED * dt;
+		if (isUp) camPhi = clamp(camPhi - ORBIT_SPEED * dt, 0.15, Math.PI - 0.15);
+		if (isDown) camPhi = clamp(camPhi + ORBIT_SPEED * dt, 0.15, Math.PI - 0.15);
+	} else {
+		let h = 0, v = 0, dir = null;
+		if (isLeft) { h -= 1; dir = 'left'; }
+		if (isRight) { h += 1; dir = 'right'; }
+		if (isUp) { v += 1; dir = 'up'; }
+		if (isDown) { v -= 1; dir = 'down'; }
+		if (h || v) {
+			moveAcrossSurface(h, v, MOVE_SPEED * dt);
+			updatePlayerMesh();
+			pushTrailPoint(dir);
+			status.textContent = 'Walking ' + dir;
+		}
+	}
+}
+
+// ── Post-processing filters ──
+let renderTarget = new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight);
+const postScene = new THREE.Scene();
+const postCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+const postMaterial = new THREE.ShaderMaterial({
+	uniforms: {
+		tDiffuse: { value: renderTarget.texture },
+		resolution: { value: new THREE.Vector2() },
+		ascii: { value: false }, threshold: { value: false }, posterize: { value: false },
+		glow: { value: false }, tone: { value: false }
+	},
+	vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position, 1.0); }`,
+	fragmentShader: `precision mediump float; varying vec2 vUv; uniform sampler2D tDiffuse; uniform vec2 resolution; uniform bool ascii, threshold, posterize, glow, tone;
+		void main() {
+			vec2 pixel = 1.0 / resolution;
+			vec4 source = texture2D(tDiffuse, vUv);
+			vec3 color = source.rgb;
+			if (glow) {
+				color += texture2D(tDiffuse, vUv + vec2(pixel.x * 3.0, 0.0)).rgb * 0.16;
+				color += texture2D(tDiffuse, vUv - vec2(pixel.x * 3.0, 0.0)).rgb * 0.16;
+				color += texture2D(tDiffuse, vUv + vec2(0.0, pixel.y * 3.0)).rgb * 0.16;
+				color += texture2D(tDiffuse, vUv - vec2(0.0, pixel.y * 3.0)).rgb * 0.16;
+			}
+			if (tone) { color = pow(max(color, 0.0), vec3(0.88)); color *= vec3(1.08, 1.02, 0.96); }
+			if (posterize) color = floor(color * 5.0) / 5.0;
+			if (threshold) { float lum = dot(color, vec3(0.299, 0.587, 0.114)); color = step(0.48, lum) * vec3(0.9, 0.96, 1.0); }
+			if (ascii) {
+				vec2 local = fract(vUv * resolution / 7.0) - 0.5;
+				float lum = dot(color, vec3(0.299, 0.587, 0.114));
+				float bars = step(abs(local.x), 0.22 + lum * 0.16) * step(abs(local.y), 0.34);
+				color *= bars;
+			}
+			gl_FragColor = vec4(color, 1.0);
+		}`
+});
+postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), postMaterial));
+
+function renderScene() {
+	const filtersActive = Object.values(filterState).some(Boolean);
+	if (filtersActive) {
+		renderer.setRenderTarget(renderTarget);
+		renderer.render(scene, camera);
+		renderer.setRenderTarget(null);
+		postMaterial.uniforms.resolution.value.set(renderTarget.width, renderTarget.height);
+		Object.keys(filterState).forEach(k => { postMaterial.uniforms[k].value = filterState[k]; });
+		renderer.render(postScene, postCamera);
+	} else {
+		renderer.setRenderTarget(null);
+		renderer.render(scene, camera);
+	}
+}
+
+function resize() {
+	const w = window.innerWidth, h = window.innerHeight;
+	renderer.setSize(w, h, false);
+	camera.aspect = w / h;
+	camera.updateProjectionMatrix();
+	renderTarget.setSize(w * renderer.getPixelRatio(), h * renderer.getPixelRatio());
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ══════════════════════════════════════════════════════════════════════
+// Multiplayer implementation
+// ══════════════════════════════════════════════════════════════════════
+const MY_MSG_TYPE = 'erick-move';
+
+const MP_COLORS = ['#4A90D9', '#fb5579', '#2E8B57', '#9B59B6', '#E07840', '#8B7EB8', '#3CB371', '#C8B820'];
+let myColor = MP_COLORS[0];
+(function() {
+	const el = document.getElementById('l-swatches');
+	MP_COLORS.forEach(col => {
+		const btn = document.createElement('button');
+		btn.className = 'swatch' + (col === myColor ? ' sel' : '');
+		btn.style.cssText = 'background:' + col + ';--c:' + col;
+		btn.onclick = () => {
+			myColor = col;
+			document.querySelectorAll('.swatch').forEach(s => s.classList.remove('sel'));
+			btn.classList.add('sel');
+		};
+		el.appendChild(btn);
+	});
+})();
+
+let notifTimer;
+function notify(msg) {
+	const el = document.getElementById('notif');
+	el.textContent = msg; el.className = 'show';
+	clearTimeout(notifTimer);
+	notifTimer = setTimeout(() => { el.className = ''; }, 2500);
+}
+
+function makeFlag(name, colorHex) {
+	const d = document.createElement('div');
+	d.className = 'name-flag';
+	const label = document.createElement('div');
+	label.className = 'label';
+	label.style.background = colorHex;
+	label.textContent = name;
+	d.appendChild(label);
+	document.body.appendChild(d);
+	return d;
+}
+
+function positionFlag(flag, worldPos) {
+	const v = worldPos.clone().project(camera);
+	if (v.z > 1) { flag.style.display = 'none'; return; }
+	flag.style.display = '';
+	flag.style.left = ((v.x * 0.5 + 0.5) * window.innerWidth) + 'px';
+	flag.style.top = ((-v.y * 0.5 + 0.5) * window.innerHeight - 20) + 'px';
+}
+
+const remotes = {};
+
+function addRemote(name, colorHex) {
+	if (remotes[name]) return;
+	const flag = makeFlag(name, colorHex);
+
+	const mesh = new THREE.Mesh(
+		new THREE.BoxGeometry(0.24, 0.24, 0.24),
+		new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.4 })
+	);
+	mesh.position.copy(UP).multiplyScalar(RADIUS + trailHeights[1]);
+	scene.add(mesh);
+
+	const maxRTrail = 10000;
+	const rPos = new Float32Array(maxRTrail * 3);
+	const rGeom = new THREE.BufferGeometry();
+	rGeom.setAttribute('position', new THREE.BufferAttribute(rPos, 3));
+	rGeom.setDrawRange(0, 0);
+	const rLine = new THREE.Line(rGeom, new THREE.LineBasicMaterial({ color: colorHex, transparent: true, opacity: 0.85 }));
+	scene.add(rLine);
+
+	remotes[name] = {
+		flag,
+		mesh,
+		trailLine: rLine,
+		trailGeom: rGeom,
+		trailPos: rPos,
+		trailCount: 0,
+		surface: new THREE.Vector3(0, 1, 0),
+		color: new THREE.Color(colorHex)
+	};
+}
+
+function removeRemote(name) {
+	const r = remotes[name];
+	if (!r) return;
+	r.flag.remove();
+	scene.remove(r.mesh);
+	r.mesh.geometry.dispose();
+	r.mesh.material.dispose();
+	scene.remove(r.trailLine);
+	r.trailGeom.dispose();
+	delete remotes[name];
+}
+
+let ws = null;
+let myName = '';
+let myFlag = null;
+let bonusMode = false;
+let lastSend = 0;
+
+function connectToServer(url, name, colorHex) {
+	myName = name;
+	myFlag = makeFlag(name, colorHex);
+	playerMesh.material.color.set(colorHex);
+
+	ws = new WebSocket(url);
+
+	ws.onopen = () => {
+		ws._ok = true;
+		ws.send(JSON.stringify({ type: 'join', name, color: colorHex }));
+		document.getElementById('login-overlay').style.display = 'none';
+		notify(name + ' joined');
+	};
+
+	ws.onmessage = (e) => {
+		try {
+			const d = JSON.parse(e.data);
+
+			if (d.type === 'players') {
+				d.players.forEach(p => { if (p.name !== myName) addRemote(p.name, p.color); });
+			}
+			if (d.type === 'join' && d.name !== myName) {
+				addRemote(d.name, d.color);
+				notify(d.name + ' joined');
+			}
+			if (d.type === 'leave') {
+				removeRemote(d.name);
+				notify(d.name + ' left');
+			}
+			if (d.type === 'mode') {
+				bonusMode = d.bonus;
+			}
+			if (d.type === 'reset') {
+				player.surface.set(0, 0, 1);
+				player.height = trailHeights[1];
+				updatePlayerMesh();
+				clearTrail();
+				flares.forEach(f => { scene.remove(f.mesh); f.mesh.geometry.dispose(); f.mesh.material.dispose(); });
+				flares.length = 0;
+				Object.values(remotes).forEach(r => {
+					r.surface.set(0, 1, 0);
+					r.mesh.position.copy(r.surface).multiplyScalar(RADIUS + trailHeights[1]);
+					r.trailCount = 0;
+					r.trailGeom.setDrawRange(0, 0);
+				});
+			}
+			if (d.type === 'kicked') {
+				ws._ok = false; ws.close();
+				notify('Removed from session');
+				setTimeout(() => {
+					const ov = document.getElementById('login-overlay');
+					ov.classList.remove('dissolve'); ov.style.display = 'flex';
+					document.getElementById('l-err').textContent = 'Removed by instructor.';
+				}, 600);
+			}
+			if (d.type === 'join-rejected') {
+				const ov = document.getElementById('login-overlay');
+				ov.classList.remove('dissolve'); ov.style.display = 'flex';
+				document.getElementById('l-err').textContent = d.reason || 'Cannot rejoin.';
+			}
+
+			if (d.name && d.name !== myName && remotes[d.name]) {
+				const r = remotes[d.name];
+				const nx = typeof d.nx === 'number' ? d.nx : (d.x || 0);
+				const ny = typeof d.ny === 'number' ? d.ny : (d.y || 1);
+				const nz = typeof d.nz === 'number' ? d.nz : (d.z || 0);
+				r.surface.set(nx, ny, nz).normalize();
+				const h = typeof d.h === 'number' ? d.h : trailHeights[1];
+				r.mesh.position.copy(r.surface).multiplyScalar(RADIUS + h);
+				r.mesh.quaternion.setFromUnitVectors(UP, r.surface);
+				positionFlag(r.flag, r.mesh.position);
+
+				if (r.trailCount < 10000) {
+					const idx = r.trailCount * 3;
+					r.trailPos[idx] = r.mesh.position.x;
+					r.trailPos[idx+1] = r.mesh.position.y;
+					r.trailPos[idx+2] = r.mesh.position.z;
+					r.trailCount++;
+					r.trailGeom.setDrawRange(0, r.trailCount);
+					r.trailGeom.attributes.position.needsUpdate = true;
+				}
+			}
+
+		} catch (err) { console.error(err); }
+	};
+
+	ws.onclose = () => {
+		if (!ws._ok) return;
+		const ov = document.getElementById('login-overlay');
+		ov.classList.remove('dissolve'); ov.style.display = 'flex';
+		document.getElementById('l-err').textContent = 'Disconnected.';
+	};
+}
+
+function sendUpdate(stateData) {
+	if (!ws || ws.readyState !== WebSocket.OPEN) return;
+	const now = performance.now();
+	if (now - lastSend < 50) return;
+	lastSend = now;
+	ws.send(JSON.stringify({ type: MY_MSG_TYPE, ...stateData }));
+}
+
+function doJoin() {
+	const name = document.getElementById('l-name').value.trim();
+	const server = document.getElementById('l-server').value.trim();
+	const err = document.getElementById('l-err');
+	if (!name) { err.textContent = 'Enter a name'; return; }
+	if (!server) { err.textContent = 'Enter the server URL'; return; }
+	err.textContent = '';
+	const ov = document.getElementById('login-overlay');
+	ov.classList.add('dissolve');
+	setTimeout(() => {
+		ov.style.display = 'none';
+		connectToServer(server, name, myColor);
+	}, 500);
+}
+window.doJoin = doJoin;
+
+// ══════════════════════════════════════════════════════════════════════
+// Render loop
+// ══════════════════════════════════════════════════════════════════════
+let lastTime = 0;
+function renderLoop(timestamp) {
+	const dt = Math.min((timestamp - (lastTime || timestamp)) / 1000, 0.05);
+	lastTime = timestamp;
+
+	handleInput(dt);
+	updateCamera();
+	updateFlares();
+
+	sendUpdate({ nx: player.surface.x, ny: player.surface.y, nz: player.surface.z, h: player.height });
+
+	if (myFlag) positionFlag(myFlag, playerMesh.position);
+	Object.values(remotes).forEach(r => positionFlag(r.flag, r.mesh.position));
+
+	renderScene();
+	requestAnimationFrame(renderLoop);
+}
+requestAnimationFrame(renderLoop);
+</script>
+</body>
+</html>
